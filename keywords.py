@@ -134,7 +134,7 @@ def modify_csv(input_file, output_file, mapping_file):
 
 
 # Example usage (replace with your file names)
-input_csv_file = "transactions.csv"
+input_csv_file = "/home/dcapps/Documents/SourceCode/Keyword-Categorization/transactions.csv"
 output_csv_file = "modified_transactions.csv"
 mapping_excel_file = "keyword_mapping.xlsx"  # Your mapping file
 
