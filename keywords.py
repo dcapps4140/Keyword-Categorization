@@ -33,7 +33,7 @@ def categorize_transactions(transactions_df, mapping):
         print("Error: 'Description' column not found in the transactions DataFrame.")
         return transactions_df, False
     transactions_df["Category"] = ""
-    transactions_df["Sub_Category"] = ""
+    transactions_df["Subcategory"] = ""
     updated_mapping = False
 
     if mapping is None:
@@ -45,7 +45,7 @@ def categorize_transactions(transactions_df, mapping):
         for keyword, (category, subcategory) in mapping.items():
             if keyword in description:  # Only keyword matching
                 transactions_df.at[index, "Category"] = category
-                transactions_df.at[index, "_"] = subcategory
+                transactions_df.at[index, "Subcategory"] = subcategory  # Updated line
                 matched = True
                 break
 
@@ -141,7 +141,7 @@ def modify_csv_and_write_to_db(input_file, output_file, mapping_file,
 
     # Rename columns
     df = df[
-        ["", "Month", "Date", "Description", "$", "Amount", "Category", "Sub_Category"]
+        ["", "Month", "Date", "Description", "$", "Amount", "Category", "Subcategory"]
     ]
 
     try:
@@ -174,7 +174,7 @@ def modify_csv_and_write_to_db(input_file, output_file, mapping_file,
                     Description TEXT,
                     Amount DECIMAL(10, 2),
                     Category VARCHAR(255),
-                    Sub_Category VARCHAR(255)
+                    Subcategory VARCHAR(255)
                 )
             END
         """
@@ -187,11 +187,11 @@ def modify_csv_and_write_to_db(input_file, output_file, mapping_file,
             description = row["Description"]
             amount = row["Amount"]
             category = row["Category"]
-            sub_category = row["Sub_Category"]
+            subcategory = row["Subcategory"]
             cursor.execute(
-                f"INSERT INTO {table_name} ([Month], [Date], [Description], [Amount], [Category], [Sub_Category]) "
+                f"INSERT INTO {table_name} ([Month], [Date], [Description], [Amount], [Category], [Subcategory]) "
                 f"VALUES (?,?,?,?,?,?)",
-                month, date, description, amount, category, sub_category
+                month, date, description, amount, category, subcategory
             )
 
         conn.commit()
