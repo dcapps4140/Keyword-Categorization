@@ -1,0 +1,7 @@
+SELECT TOP (10000) [MONTH]
+      ,[DATE]
+      ,[DESCRIPTION]
+      ,[AMOUNT]
+      ,[CATEGORY]
+      ,[SUB_CATEGORY]
+  FROM [PerFin].[dbo].[transaction_log]
