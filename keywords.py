@@ -1,5 +1,6 @@
 import pandas as pd
 import pyodbc
+import hashlib
 
 
 def load_mapping(filename):
@@ -67,10 +68,10 @@ def categorize_transactions(transactions_df, mapping):
     return transactions_df, updated_mapping
 
 
-def modify_csv_and_write_to_db(input_file, output_file, mapping_file, 
+def modify_csv_and_write_to_db(input_file, output_file, mapping_file,
                               server, database, username, password):
     """
-    Modifies a CSV file according to specified transformations 
+    Modifies a CSV file according to specified transformations
     and writes the modified data to an MSSqlserver database.
 
     Args:
@@ -155,15 +156,15 @@ def modify_csv_and_write_to_db(input_file, output_file, mapping_file,
         conn_str = (
             f"DRIVER={{ODBC Driver 18 for SQL Server}};SERVER={server};"
             f"DATABASE={database};UID={username};PWD={password};"
-            f"Encrypt=no;TrustServerCertificate=yes" 
+            f"Encrypt=no;TrustServerCertificate=yes"
         )
         conn = pyodbc.connect(conn_str)
         cursor = conn.cursor()
 
         # Define SQL Server table name (adjust as needed)
-        table_name = "ModifiedTransactions" 
+        table_name = "ModifiedTransactions"
 
-        # Create table if it doesn't exist (adjust schema as needed)
+        # Create table and add unique constraint if not exists
         create_table_sql = f"""
             IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = '{table_name}')
             BEGIN
@@ -174,11 +175,26 @@ def modify_csv_and_write_to_db(input_file, output_file, mapping_file,
                     Description TEXT,
                     Amount DECIMAL(10, 2),
                     Category VARCHAR(255),
-                    Subcategory VARCHAR(255)
+                    Subcategory VARCHAR(255),
+                    TransactionHash VARCHAR(255) UNIQUE
                 )
             END
         """
         cursor.execute(create_table_sql)
+
+        # Delete existing duplicates (optional, if you've already done it)
+        # delete_duplicates_sql = """
+        #     WITH DuplicateRows AS (
+        #         SELECT
+        #             ROW_NUMBER() OVER (PARTITION BY Date, Amount ORDER BY id) AS RowNum
+        #         FROM
+        #             ModifiedTransactions
+        #     )
+        #     DELETE FROM DuplicateRows
+        #     WHERE
+        #         RowNum > 1;
+        # """
+        # cursor.execute(delete_duplicates_sql)
 
         # Insert data into the table
         for _, row in df.iterrows():
@@ -188,10 +204,15 @@ def modify_csv_and_write_to_db(input_file, output_file, mapping_file,
             amount = row["Amount"]
             category = row["Category"]
             subcategory = row["Subcategory"]
+
+            # Calculate hash
+            transaction_str = f"{date}{description}{amount}"
+            transaction_hash = hashlib.sha256(transaction_str.encode()).hexdigest()
+
             cursor.execute(
-                f"INSERT INTO {table_name} ([Month], [Date], [Description], [Amount], [Category], [Subcategory]) "
-                f"VALUES (?,?,?,?,?,?)",
-                month, date, description, amount, category, subcategory
+                f"INSERT INTO {table_name} ([Month], [Date], [Description], [Amount], [Category], [Subcategory], [TransactionHash]) "
+                f"VALUES (?,?,?,?,?,?,?)",
+                month, date, description, amount, category, subcategory, transaction_hash
             )
 
         conn.commit()
@@ -202,17 +223,19 @@ def modify_csv_and_write_to_db(input_file, output_file, mapping_file,
 
     except pyodbc.Error as e:
         # Extract SQLSTATE for more specific error handling
-        sqlstate = e.args[0] 
-
-        if sqlstate == '08001':  # Certificate verification error
-            print(f"Certificate verification failed: {e}")
-            print("Check server certificate or adjust TrustServerCertificate setting.") 
-        elif sqlstate == '28000':  # Authentication error
-            print(f"Authentication failed: {e}")
-            print("Verify username and password.")
-        elif sqlstate.startswith('08'):  # General connection error
-            print(f"Connection error: {e}")
-            print("Check server connectivity, network issues, or firewall rules.")
+        if len(e.args) > 0:
+            sqlstate = e.args[0]
+            if sqlstate == '08001':  # Certificate verification error
+                print(f"Certificate verification failed: {e}")
+                print("Check server certificate or adjust TrustServerCertificate setting.")
+            elif sqlstate == '28000':  # Authentication error
+                print(f"Authentication failed: {e}")
+                print("Verify username and password.")
+            elif sqlstate.startswith('08'):  # General connection error
+                print(f"Connection error: {e}")
+                print("Check server connectivity, network issues, or firewall rules.")
+            else:
+                print(f"Database error: {e}")
         else:
             print(f"Database error: {e}")
 
