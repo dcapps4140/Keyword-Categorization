@@ -1,4 +1,5 @@
 import pandas as pd
+import pyodbc
 
 
 def load_mapping(filename):
@@ -66,8 +67,24 @@ def categorize_transactions(transactions_df, mapping):
     return transactions_df, updated_mapping
 
 
-def modify_csv(input_file, output_file, mapping_file):
-    """Modifies a CSV file according to specified transformations."""
+def modify_csv_and_write_to_db(input_file, output_file, mapping_file, 
+                              server, database, username, password):
+    """
+    Modifies a CSV file according to specified transformations 
+    and writes the modified data to an MSSqlserver database.
+
+    Args:
+        input_file (str): Path to the input CSV file.
+        output_file (str): Path to save the modified CSV file.
+        mapping_file (str): Path to the Excel file containing keyword-category mappings.
+        server (str): Name of the MSSqlserver server.
+        database (str): Name of the database to connect to.
+        username (str): Username for database authentication.
+        password (str): Password for database authentication.
+
+    Returns:
+        None
+    """
     try:
         df = pd.read_csv(input_file)
     except FileNotFoundError:
@@ -123,7 +140,7 @@ def modify_csv(input_file, output_file, mapping_file):
     df.insert(4, "$", "$")
 
     df = df[
-        ["", "Month", "Date", "Description", "$", "Amount", "Category", "Sub-Category"]
+        ["", "Month", "Date", "Description", "$", "Amount", "Category", "Sub_Category"]
     ]
 
     try:
@@ -132,11 +149,85 @@ def modify_csv(input_file, output_file, mapping_file):
     except Exception as e:
         print(f"An error occurred while saving the file: {e}")
 
+    try:
+        # Connect to the MSSqlserver database
+        conn_str = (
+            f"DRIVER={{ODBC Driver 18 for SQL Server}};SERVER={server};"
+            f"DATABASE={database};UID={username};PWD={password};"
+            f"Encrypt=no;TrustServerCertificate=yes" 
+        )
+        conn = pyodbc.connect(conn_str)
+        cursor = conn.cursor()
+
+        # Define SQL Server table name (adjust as needed)
+        table_name = "ModifiedTransactions" 
+
+        # Create table if it doesn't exist (adjust schema as needed)
+        create_table_sql = f"""
+            IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = '{table_name}')
+            BEGIN
+                CREATE TABLE {table_name} (
+                    id INT IDENTITY(1,1) PRIMARY KEY,
+                    Month VARCHAR(255),
+                    Date DATE,
+                    Description TEXT,
+                    Amount DECIMAL(10, 2),
+                    Category VARCHAR(255),
+                    Sub_Category VARCHAR(255)
+                )
+            END
+        """
+        cursor.execute(create_table_sql)
+
+        # Insert data into the table
+        for _, row in df.iterrows():
+            month = row["Month"]
+            date = row["Date"]
+            description = row["Description"]
+            amount = row["Amount"]
+            category = row["Category"]
+            sub_category = row["Sub_Category"]
+            cursor.execute(
+                f"INSERT INTO {table_name} ([Month], [Date], [Description], [Amount], [Category], [Sub_Category]) "
+                f"VALUES ('{month}', '{date}', '{description}', {amount}, '{category}', '{sub_category}')"
+            )
+
+        conn.commit()
+        cursor.close()
+        conn.close()
+
+        print(f"Data successfully written to MSSqlserver database.")
+
+    except pyodbc.Error as e:
+        # Extract SQLSTATE for more specific error handling
+        sqlstate = e.args[0] 
+
+        if sqlstate == '08001':  # Certificate verification error
+            print(f"Certificate verification failed: {e}")
+            print("Check server certificate or adjust TrustServerCertificate setting.") 
+        elif sqlstate == '28000':  # Authentication error
+            print(f"Authentication failed: {e}")
+            print("Verify username and password.")
+        elif sqlstate.startswith('08'):  # General connection error
+            print(f"Connection error: {e}")
+            print("Check server connectivity, network issues, or firewall rules.")
+        else:
+            print(f"Database error: {e}")
+
 
 # Example usage (replace with your file names)
 input_csv_file = "/home/dcapps/Documents/SourceCode/Keyword-Categorization/transactions.csv"
 output_csv_file = "modified_transactions.csv"
 mapping_excel_file = "keyword_mapping.xlsx"  # Your mapping file
 
-modify_csv(input_csv_file, output_csv_file, mapping_excel_file)
+modify_csv_and_write_to_db(
+    input_file=input_csv_file, 
+    output_file=output_csv_file, 
+    mapping_file=mapping_excel_file, 
+    server="naildc-srv1", 
+    database="PerFin",
+    username="sa", 
+    password="sqlserver1!"
+)
+
 # End of keywords.py
