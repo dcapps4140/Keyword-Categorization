@@ -33,7 +33,7 @@ def categorize_transactions(transactions_df, mapping):
         print("Error: 'Description' column not found in the transactions DataFrame.")
         return transactions_df, False
     transactions_df["Category"] = ""
-    transactions_df["Sub-Category"] = ""
+    transactions_df["Sub_Category"] = ""
     updated_mapping = False
 
     if mapping is None:
@@ -45,7 +45,7 @@ def categorize_transactions(transactions_df, mapping):
         for keyword, (category, subcategory) in mapping.items():
             if keyword in description:  # Only keyword matching
                 transactions_df.at[index, "Category"] = category
-                transactions_df.at[index, "Sub-Category"] = subcategory
+                transactions_df.at[index, "_"] = subcategory
                 matched = True
                 break
 
@@ -57,7 +57,7 @@ def categorize_transactions(transactions_df, mapping):
                 .lower()
             )
             category = input("Enter category for this keyword: ").strip()
-            subcategory = input("Enter sub-category for this keyword: ").strip()
+            subcategory = input("Enter _ for this keyword: ").strip()
             if keyword and category and subcategory:
                 mapping[keyword] = (category, subcategory)
                 updated_mapping = True
@@ -139,6 +139,7 @@ def modify_csv_and_write_to_db(input_file, output_file, mapping_file,
     df.insert(1, "Month", df.pop("Month"))
     df.insert(4, "$", "$")
 
+    # Rename columns
     df = df[
         ["", "Month", "Date", "Description", "$", "Amount", "Category", "Sub_Category"]
     ]
@@ -189,7 +190,8 @@ def modify_csv_and_write_to_db(input_file, output_file, mapping_file,
             sub_category = row["Sub_Category"]
             cursor.execute(
                 f"INSERT INTO {table_name} ([Month], [Date], [Description], [Amount], [Category], [Sub_Category]) "
-                f"VALUES ('{month}', '{date}', '{description}', {amount}, '{category}', '{sub_category}')"
+                f"VALUES (?,?,?,?,?,?)",
+                month, date, description, amount, category, sub_category
             )
 
         conn.commit()
